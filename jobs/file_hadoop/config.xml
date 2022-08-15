@@ -1,0 +1,60 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@1207.ve6191ff089f8">
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>host</name>
+          <defaultValue>web19</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@2759.v87459c4eea_ca_">
+    <script>node {    
+    //rel/release-3.1.4
+    def skip = &quot;Yes&quot;
+    //xc = &quot;ip addr show eth0 | grep &quot;inet\b&quot; | awk &apos;{print $2}&apos; | cut -d/ -f1&quot;
+    withCredentials([sshUserPrivateKey(credentialsId: &quot;id_rsa_unlocked&quot;, keyFileVariable: &apos;keyfile&apos;)]) {
+       stage(&apos;check no file&apos;){
+        try{
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; cat README2.txt&quot;&apos;
+        }
+        catch(all) {
+           echo &quot;no such file as README2.txt&quot;
+        }
+       }
+       stage(&apos;put file&apos;){
+           try{
+             sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; rm putfile.sh&quot;&apos;
+           }
+           catch(all) {
+             echo &quot;no such file as putfile.sh&quot;
+           }
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; wget https://gist.githubusercontent.com/Areso/68af5b629902a32db2ca8b3da706cf7a/raw/aa99ef007aee6f6a6d90ecaa9578bd21f0354eb2/putfile.sh&quot;&apos;
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; cat putfile.sh&quot;&apos;
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; /bin/bash putfile.sh&quot;&apos;
+       }
+       stage(&apos;get file &apos;) {
+           try{
+             sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; rm getfile.sh&quot;&apos;
+           }
+           catch(all) {
+             echo &quot;no such file as getfile.sh&quot;
+           }
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; wget https://gist.githubusercontent.com/Areso/5bc9a47fb4cf2c10f6e12f349fac5ba7/raw/df720f96bb02ba0e2942b91b08149738cbe7d52b/getfile.sh&quot;&apos;
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; cat getfile.sh&quot;&apos;
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; /bin/bash getfile.sh&quot;&apos;
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; cat README2.txt&quot;&apos;
+       }
+    }
+}</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

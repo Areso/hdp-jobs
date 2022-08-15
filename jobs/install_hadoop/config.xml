@@ -1,0 +1,74 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@1207.ve6191ff089f8">
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>host</name>
+          <defaultValue>web6</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.ChoiceParameterDefinition>
+          <name>skipCloneStep</name>
+          <choices class="java.util.Arrays$ArrayList">
+            <a class="string-array">
+              <string>Yes</string>
+              <string>No</string>
+            </a>
+          </choices>
+        </hudson.model.ChoiceParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@2759.v87459c4eea_ca_">
+    <script>node {    
+    //rel/release-3.1.4
+    skipBuildDocker = &quot;Yes&quot;
+    withCredentials([sshUserPrivateKey(credentialsId: &quot;id_rsa_unlocked&quot;, keyFileVariable: &apos;keyfile&apos;)]) {
+       stage(&apos;git clone hadoop&apos;) {
+           if (skipCloneStep==&quot;No&quot;) {
+               sh &apos;ssh root@${host} &quot;rm -rf /root/hadoop/ &amp;&amp; git clone https://github.com/areso/hadoop.git &amp;&amp; cd hadoop &amp;&amp; git checkout hotfix-3.1.4-1&quot;&apos;
+           }
+       }
+       stage(&apos;build&apos;) {
+        if (skipBuildDocker==&quot;No&quot;) {
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; ./start-build-env.sh&quot;&apos;
+        }
+       }
+       stage(&apos;apt update&apos;){
+           
+           sh &apos;ssh root@${host} &quot;apt update&quot;&apos;
+       }
+       stage(&apos;install jdk&apos;) {
+           sh &apos;ssh root@${host} &quot;apt install -y openjdk-8-jdk &amp;&amp; apt install -y openjdk-8-source&quot;&apos;
+       }
+       stage(&apos;install maven&apos;) {
+           sh &apos;ssh root@${host} &quot;apt install -y maven&quot;&apos;
+       }
+       stage(&apos;install packages&apos;) {
+           sh &apos;ssh root@${host} &quot;apt install -y build-essential autoconf automake libtool cmake&quot;&apos;
+       }
+       stage(&apos;install packages p2&apos;) {
+           sh &apos;ssh root@${host} &quot;apt install -y libfuse-dev zlib1g-dev&quot;&apos;
+       }
+       //the OS comes with protobuf 3.0, but it is required 2.5 
+       //to build YARN API package
+       //https://github.com/protocolbuffers/protobuf/releases/tag/v2.5.0
+       stage(&apos;compile install protobuf 2.5&apos;) {
+           sh &apos;ssh root@${host} &quot;wget https://github.com/protocolbuffers/protobuf/releases/download/v2.5.0/protobuf-2.5.0.tar.gz&quot;&apos;
+           sh &apos;ssh root@${host} &quot;tar -xf protobuf-2.5.0.tar.gz&quot;&apos;
+           sh &apos;ssh root@${host} &quot;cd protobuf-2.5.0 &amp;&amp; ./configure &amp;&amp; make &amp;&amp; make install &amp;&amp; ldconfig&quot;&apos;
+       }
+       stage(&apos;build binaries&apos;){
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; mvn package -Pdist -DskipTests -Dtar -Dmaven.javadoc.skip=true&quot;&apos;
+       }
+   }
+}</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

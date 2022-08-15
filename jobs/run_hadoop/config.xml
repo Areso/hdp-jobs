@@ -1,0 +1,78 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job@1207.ve6191ff089f8">
+  <actions/>
+  <description></description>
+  <keepDependencies>false</keepDependencies>
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>host</name>
+          <defaultValue>web6</defaultValue>
+          <trim>false</trim>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps@2759.v87459c4eea_ca_">
+    <script>node {    
+    //rel/release-3.1.4
+    skip = &quot;Yes&quot;
+    withCredentials([sshUserPrivateKey(credentialsId: &quot;id_rsa_unlocked&quot;, keyFileVariable: &apos;keyfile&apos;)]) {
+       stage(&apos;create infra&apos;){
+           sh &apos;ssh root@${host} &quot;lxc storage create stpool dir source=/root/lxc&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc profile device add default root disk path=/ pool=stpool&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc network create network1&quot;&apos;
+       }
+       stage(&apos;create lxc containers&apos;) {
+           sh &apos;ssh root@${host} &quot;lxc init images:centos/7 &amp;&amp; lxc launch images:centos/7 hdfsnamenode &amp;&amp; lxc launch images:centos/7 hdfsdatanode&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc network attach network1 hdfsnamenode&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc network attach network1 hdfsdatanode&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc exec hdfsnamenode -- sudo /bin/bash ifup eth0&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc exec hdfsdatanode -- sudo /bin/bash ifup eth0&quot;&apos;
+       }
+       stage(&apos;install utils&apos;){
+           sh &apos;ssh root@${host} &quot;apt install -y lxc-utils moreutils&quot;&apos;
+       }
+       stage(&apos;update dns&apos;) {
+           //sh &apos;ssh root@${host} &quot;echo -e &quot;auth-zone=lxd\\\ndns-loop-detect&quot; | lxc network set network1 raw.dnsmasq - &quot;&apos;
+           def ipv4 = sh(script:&apos;ssh root@${host} &quot;ifdata -pa network1&quot;&apos;, returnStdout:true).trim()
+           sh &apos;&apos;&apos;echo &apos;&apos;&apos;+skip
+           sh &apos;&apos;&apos;
+           ssh root@${host} &quot;systemd-resolve --interface network1 --set-dns &apos;&apos;&apos;+ipv4+&apos;&apos;&apos; --set-domain lxd&quot;
+           &apos;&apos;&apos;
+      }
+       stage(&apos;put built dist to lxc&apos;){
+           
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; lxc file push ./hadoop-dist/target/hadoop-3.1.4.tar.gz hdfsdatanode/opt/hadoop-3.1.4.tar.gz&quot;&apos;
+           sh &apos;ssh root@${host} &quot;cd hadoop &amp;&amp; lxc file push ./hadoop-dist/target/hadoop-3.1.4.tar.gz hdfsnamenode/opt/hadoop-3.1.4.tar.gz&quot;&apos;
+       }
+       stage(&apos;unpack built in lxc&apos;){
+           
+           sh &apos;ssh root@${host} &quot;lxc exec hdfsdatanode -- tar -xzf /opt/hadoop-3.1.4.tar.gz -C /opt&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc exec hdfsnamenode -- tar -xzf /opt/hadoop-3.1.4.tar.gz -C /opt&quot;&apos;
+       }
+       stage(&apos;install jdk&apos;) {
+           sh &apos;ssh root@${host} &quot;lxc exec hdfsdatanode -- yum install -y java&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc exec hdfsnamenode -- yum install -y java&quot;&apos;
+       }
+       stage(&apos;create config&apos;) {
+           sh &apos;ssh root@${host} &quot;curl https://gist.githubusercontent.com/Areso/659f547e3f881fe3f8ad81111451e9dd/raw/c4ae69b5ba3fd9a3efef103a18181c47129b18f3/core-site.xml &gt;&gt; /tmp/core-site.xml&quot;&apos;
+       }
+       stage(&apos;push config&apos;) {
+           sh &apos;ssh root@${host} &quot;lxc file push /tmp/core-site.xml hdfsdatanode/opt/hadoop-3.1.4/etc/hadoop/core-site.xml&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc file push /tmp/core-site.xml hdfsnamenode/opt/hadoop-3.1.4/etc/hadoop/core-site.xml&quot;&apos;
+       }
+       stage(&apos;start daemons&apos;) {
+           sh &apos;ssh root@${host} &quot;lxc exec hdfsnamenode --env JAVA_HOME=/usr/lib/jvm/jre -- /opt/hadoop-3.1.4/bin/hdfs namenode -format&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc exec hdfsnamenode --env JAVA_HOME=/usr/lib/jvm/jre -T -- /opt/hadoop-3.1.4/bin/hdfs --daemon start namenode&quot;&apos;
+           sh &apos;ssh root@${host} &quot;lxc exec hdfsdatanode --env JAVA_HOME=/usr/lib/jvm/jre -T -- /opt/hadoop-3.1.4/bin/hdfs --daemon start datanode&quot;&apos;
+       }
+       
+   }
+}</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>
